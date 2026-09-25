@@ -8,6 +8,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import 'models/booth_layout.dart';
 import 'models/photo_session.dart';
+import 'services/app_settings.dart';
 import 'services/device_actions.dart';
 import 'services/photo_composer.dart';
 import 'services/session_store.dart';
@@ -27,12 +28,16 @@ Future<void> main() async {
   await Hive.initFlutter();
   if (!Hive.isAdapterRegistered(0)) Hive.registerAdapter(PhotoSessionAdapter());
   final box = await Hive.openBox<PhotoSession>('photo_sessions');
-  runApp(PhotoBoothApp(store: SessionStore(box)));
+  final settingsBox = await Hive.openBox<bool>('app_settings');
+  runApp(
+    PhotoBoothApp(store: SessionStore(box), settings: AppSettings(settingsBox)),
+  );
 }
 
 class PhotoBoothApp extends StatelessWidget {
-  const PhotoBoothApp({super.key, required this.store});
+  const PhotoBoothApp({super.key, required this.store, required this.settings});
   final SessionStore store;
+  final AppSettings settings;
 
   @override
   Widget build(BuildContext context) => MaterialApp(
@@ -43,17 +48,20 @@ class PhotoBoothApp extends StatelessWidget {
       scaffoldBackgroundColor: canvas,
       colorScheme: ColorScheme.fromSeed(seedColor: purple),
     ),
-    home: HomeScreen(store: store),
+    home: HomeScreen(store: store, settings: settings),
   );
 }
 
 class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key, required this.store});
+  const HomeScreen({super.key, required this.store, required this.settings});
   final SessionStore store;
+  final AppSettings settings;
 
   Future<void> _start(BuildContext context) async {
     await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => LayoutSelectionScreen(store: store)),
+      MaterialPageRoute(
+        builder: (_) => LayoutSelectionScreen(store: store, settings: settings),
+      ),
     );
   }
 
@@ -69,14 +77,28 @@ class HomeScreen extends StatelessWidget {
             children: [
               Align(
                 alignment: Alignment.topRight,
-                child: IconButton(
-                  onPressed: () => showAboutDialog(
-                    context: context,
-                    applicationName: 'Photo Booth Maker',
-                    applicationVersion: 'MVP',
-                  ),
-                  icon: const Icon(Icons.info_outline_rounded),
-                  tooltip: 'About',
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => SettingsScreen(settings: settings),
+                        ),
+                      ),
+                      icon: const Icon(Icons.settings_outlined),
+                      tooltip: 'Settings',
+                    ),
+                    IconButton(
+                      onPressed: () => showAboutDialog(
+                        context: context,
+                        applicationName: 'Photo Booth Maker',
+                        applicationVersion: 'MVP',
+                      ),
+                      icon: const Icon(Icons.info_outline_rounded),
+                      tooltip: 'About',
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 4),
@@ -151,9 +173,46 @@ class HomeScreen extends StatelessWidget {
   );
 }
 
+class SettingsScreen extends StatelessWidget {
+  const SettingsScreen({super.key, required this.settings});
+  final AppSettings settings;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: SafeArea(
+      child: Column(
+        children: [
+          const PageHeader(title: 'Settings'),
+          AnimatedBuilder(
+            animation: settings,
+            builder: (_, _) => SwitchListTile.adaptive(
+              contentPadding: const EdgeInsets.fromLTRB(24, 10, 24, 10),
+              title: const Text(
+                'Mirror camera',
+                style: TextStyle(fontWeight: FontWeight.w800, color: ink),
+              ),
+              subtitle: const Text(
+                'Flip the preview and saved photos horizontally.',
+                style: TextStyle(color: Color(0xFF686375)),
+              ),
+              value: settings.mirrorCamera,
+              onChanged: settings.setMirrorCamera,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 class LayoutSelectionScreen extends StatefulWidget {
-  const LayoutSelectionScreen({super.key, required this.store});
+  const LayoutSelectionScreen({
+    super.key,
+    required this.store,
+    required this.settings,
+  });
   final SessionStore store;
+  final AppSettings settings;
 
   @override
   State<LayoutSelectionScreen> createState() => _LayoutSelectionScreenState();
@@ -173,6 +232,7 @@ class _LayoutSelectionScreenState extends State<LayoutSelectionScreen> {
           layout: selected,
           timerSeconds: timer,
           store: widget.store,
+          settings: widget.settings,
         ),
       ),
     );
@@ -330,10 +390,12 @@ class CameraSessionScreen extends StatefulWidget {
     required this.layout,
     required this.timerSeconds,
     required this.store,
+    required this.settings,
   });
   final PhotoBoothLayout layout;
   final int timerSeconds;
   final SessionStore store;
+  final AppSettings settings;
 
   @override
   State<CameraSessionScreen> createState() => _CameraSessionScreenState();
@@ -347,6 +409,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   List<CameraDescription> _cameras = [];
   CameraDescription? _camera;
   final List<File> _captured = [];
+  final List<bool> _capturedMirrored = [];
   bool _flashEnabled = false;
   bool _busy = false;
   bool _finished = false;
@@ -431,6 +494,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       setState(() => _countdown = null);
       final photo = await _controller!.takePicture();
       _captured.add(File(photo.path));
+      _capturedMirrored.add(widget.settings.mirrorCamera);
       if (_captured.length == widget.layout.photoCount) await _review();
     } on CameraException catch (error) {
       _showMessage(
@@ -451,7 +515,11 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   Future<void> _review() async {
     final usePhotos = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => ReviewScreen(layout: widget.layout, photos: _captured),
+        builder: (_) => ReviewScreen(
+          layout: widget.layout,
+          photos: _captured,
+          mirrorPhotos: _capturedMirrored,
+        ),
       ),
     );
     if (!mounted) return;
@@ -461,7 +529,10 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       for (final file in _captured) {
         if (await file.exists()) await file.delete();
       }
-      setState(_captured.clear);
+      setState(() {
+        _captured.clear();
+        _capturedMirrored.clear();
+      });
     }
   }
 
@@ -471,6 +542,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       final output = await _composer.compose(
         layout: widget.layout,
         photos: _captured,
+        mirrorPhotos: _capturedMirrored,
       );
       final session = PhotoSession(
         id: DateTime.now().microsecondsSinceEpoch.toString(),
@@ -495,6 +567,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         if (await photo.exists()) await photo.delete();
       }
       _captured.clear();
+      _capturedMirrored.clear();
       _showMessage('We could not create your photo: $error');
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -713,7 +786,19 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       child: Stack(
         fit: StackFit.expand,
         children: [
-          CameraPreview(controller),
+          AnimatedBuilder(
+            animation: widget.settings,
+            builder: (_, child) => Transform(
+              alignment: Alignment.center,
+              transform: Matrix4.diagonal3Values(
+                widget.settings.mirrorCamera ? -1 : 1,
+                1,
+                1,
+              ),
+              child: child,
+            ),
+            child: CameraPreview(controller),
+          ),
           if (_countdown != null)
             Center(
               child: AnimatedSwitcher(
@@ -745,9 +830,15 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
 }
 
 class ReviewScreen extends StatelessWidget {
-  const ReviewScreen({super.key, required this.layout, required this.photos});
+  const ReviewScreen({
+    super.key,
+    required this.layout,
+    required this.photos,
+    required this.mirrorPhotos,
+  });
   final PhotoBoothLayout layout;
   final List<File> photos;
+  final List<bool> mirrorPhotos;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -763,7 +854,12 @@ class ReviewScreen extends StatelessWidget {
           ),
           const SizedBox(height: 28),
           Center(
-            child: PhotoFrame(layout: layout, photos: photos, large: true),
+            child: PhotoFrame(
+              layout: layout,
+              photos: photos,
+              mirrorPhotos: mirrorPhotos,
+              large: true,
+            ),
           ),
           const SizedBox(height: 30),
           Row(
@@ -1207,11 +1303,13 @@ class PhotoFrame extends StatelessWidget {
     super.key,
     required this.layout,
     required this.photos,
+    this.mirrorPhotos = const [],
     this.finalPhoto = false,
     this.large = false,
   });
   final PhotoBoothLayout layout;
   final List<File> photos;
+  final List<bool> mirrorPhotos;
   final bool finalPhoto;
   final bool large;
   @override
@@ -1261,7 +1359,15 @@ class PhotoFrame extends StatelessWidget {
       height: slot.height * constraints.maxHeight,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(large ? 7 : 3),
-        child: Image.file(photos[index], fit: BoxFit.cover),
+        child: Transform(
+          alignment: Alignment.center,
+          transform: Matrix4.diagonal3Values(
+            index < mirrorPhotos.length && mirrorPhotos[index] ? -1 : 1,
+            1,
+            1,
+          ),
+          child: Image.file(photos[index], fit: BoxFit.cover),
+        ),
       ),
     );
   }

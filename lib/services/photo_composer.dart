@@ -12,6 +12,7 @@ class PhotoComposer {
   Future<File> compose({
     required PhotoBoothLayout layout,
     required List<File> photos,
+    required List<bool> mirrorPhotos,
   }) async {
     final logoData = await rootBundle.load('lib/logo/photoboot-logo.png');
     final logoBytes = logoData.buffer.asUint8List(
@@ -30,6 +31,7 @@ class PhotoComposer {
         colorValue,
         slots,
         photoPaths,
+        mirrorPhotos,
         logoBytes,
       ),
     );
@@ -53,6 +55,7 @@ Future<Uint8List> _composeInBackground(
   int colorValue,
   List<List<double>> slotValues,
   List<String> photoPaths,
+  List<bool> mirrorPhotos,
   Uint8List logoBytes,
 ) async {
   final width = isStrip ? 1200 : 1800;
@@ -74,6 +77,7 @@ Future<Uint8List> _composeInBackground(
       throw StateError('We could not read photo ${index + 1}.');
     }
     final source = img.bakeOrientation(decoded);
+    if (mirrorPhotos[index]) img.flipHorizontal(source);
     final slot = slotValues[index];
     final slotWidth = (slot[2] * width).round();
     final slotHeight = (slot[3] * height).round();
