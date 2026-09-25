@@ -24,6 +24,7 @@ class PhotoBoothLayout {
 
   String get format => isStrip ? '6 × 2 strip' : '6 × 4 card';
   double get aspectRatio => isStrip ? 1 / 3 : 3 / 2;
+  double get framedAspectRatio => aspectRatio;
 }
 
 const _verticalThree = [
@@ -43,35 +44,35 @@ const photoBoothLayouts = [
     id: 'A',
     photoCount: 3,
     isStrip: true,
-    colorValue: 0xFFFFC9DE,
+    colorValue: 0xFFF0D7DE,
     slots: _verticalThree,
   ),
   PhotoBoothLayout(
     id: 'B',
     photoCount: 3,
     isStrip: true,
-    colorValue: 0xFFD9CBFF,
+    colorValue: 0xFFDFD8EB,
     slots: _verticalThree,
   ),
   PhotoBoothLayout(
     id: 'C',
     photoCount: 4,
     isStrip: true,
-    colorValue: 0xFFFFD9B8,
+    colorValue: 0xFFE6D8C4,
     slots: _verticalFour,
   ),
   PhotoBoothLayout(
     id: 'D',
     photoCount: 4,
     isStrip: true,
-    colorValue: 0xFFBCEBE1,
+    colorValue: 0xFFC6DBD2,
     slots: _verticalFour,
   ),
   PhotoBoothLayout(
     id: 'E',
     photoCount: 4,
     isStrip: false,
-    colorValue: 0xFFFFE084,
+    colorValue: 0xFFF2E7C9,
     slots: [
       PhotoSlot(.07, .10, .41, .34),
       PhotoSlot(.52, .10, .41, .34),
@@ -83,7 +84,7 @@ const photoBoothLayouts = [
     id: 'F',
     photoCount: 4,
     isStrip: false,
-    colorValue: 0xFFC9D8FF,
+    colorValue: 0xFFD0DAEA,
     slots: [
       PhotoSlot(.09, .12, .38, .31),
       PhotoSlot(.53, .12, .38, .31),
@@ -95,7 +96,7 @@ const photoBoothLayouts = [
     id: 'G',
     photoCount: 3,
     isStrip: false,
-    colorValue: 0xFFF0CAEF,
+    colorValue: 0xFFE6D7E0,
     slots: [
       PhotoSlot(.07, .11, .53, .70),
       PhotoSlot(.64, .11, .29, .33),
@@ -106,7 +107,7 @@ const photoBoothLayouts = [
     id: 'H',
     photoCount: 3,
     isStrip: false,
-    colorValue: 0xFFBFE2FF,
+    colorValue: 0xFFC8D8DD,
     slots: [
       PhotoSlot(.07, .10, .41, .34),
       PhotoSlot(.52, .10, .41, .34),
@@ -117,28 +118,28 @@ const photoBoothLayouts = [
     id: 'I',
     photoCount: 2,
     isStrip: false,
-    colorValue: 0xFFFFC9DE,
+    colorValue: 0xFFF0D7DE,
     slots: [PhotoSlot(.07, .12, .41, .67), PhotoSlot(.52, .12, .41, .67)],
   ),
   PhotoBoothLayout(
     id: 'J',
     photoCount: 2,
     isStrip: false,
-    colorValue: 0xFFD9CBFF,
+    colorValue: 0xFFDFD8EB,
     slots: [PhotoSlot(.08, .17, .84, .28), PhotoSlot(.08, .52, .84, .28)],
   ),
   PhotoBoothLayout(
     id: 'K',
     photoCount: 2,
     isStrip: false,
-    colorValue: 0xFFFFD9B8,
+    colorValue: 0xFFE6D8C4,
     slots: [PhotoSlot(.09, .12, .36, .68), PhotoSlot(.55, .12, .36, .68)],
   ),
   PhotoBoothLayout(
     id: 'L',
     photoCount: 1,
     isStrip: false,
-    colorValue: 0xFFBCEBE1,
+    colorValue: 0xFFC6DBD2,
     slots: [PhotoSlot(.10, .12, .80, .64)],
   ),
 ];

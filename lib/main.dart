@@ -28,7 +28,7 @@ Future<void> main() async {
   await Hive.initFlutter();
   if (!Hive.isAdapterRegistered(0)) Hive.registerAdapter(PhotoSessionAdapter());
   final box = await Hive.openBox<PhotoSession>('photo_sessions');
-  final settingsBox = await Hive.openBox<bool>('app_settings');
+  final settingsBox = await Hive.openBox<dynamic>('app_settings');
   runApp(
     PhotoBoothApp(store: SessionStore(box), settings: AppSettings(settingsBox)),
   );
@@ -185,21 +185,92 @@ class SettingsScreen extends StatelessWidget {
           const PageHeader(title: 'Settings'),
           AnimatedBuilder(
             animation: settings,
-            builder: (_, _) => SwitchListTile.adaptive(
-              contentPadding: const EdgeInsets.fromLTRB(24, 10, 24, 10),
-              title: const Text(
-                'Mirror camera',
-                style: TextStyle(fontWeight: FontWeight.w800, color: ink),
-              ),
-              subtitle: const Text(
-                'Flip the preview and saved photos horizontally.',
-                style: TextStyle(color: Color(0xFF686375)),
-              ),
-              value: settings.mirrorCamera,
-              onChanged: settings.setMirrorCamera,
+            builder: (_, _) => ListView(
+              shrinkWrap: true,
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+              children: [
+                SwitchListTile.adaptive(
+                  contentPadding: const EdgeInsets.fromLTRB(4, 10, 4, 10),
+                  title: const Text(
+                    'Mirror camera',
+                    style: TextStyle(fontWeight: FontWeight.w800, color: ink),
+                  ),
+                  subtitle: const Text(
+                    'Flip the preview and saved photos horizontally.',
+                    style: TextStyle(color: Color(0xFF686375)),
+                  ),
+                  value: settings.mirrorCamera,
+                  onChanged: settings.setMirrorCamera,
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'PHOTO LOOK',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.3,
+                    color: Color(0xFF686375),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                for (final look in PhotoLook.values)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 9),
+                    child: _PhotoLookOption(
+                      look: look,
+                      selected: settings.photoLook == look,
+                      onTap: () => settings.setPhotoLook(look),
+                    ),
+                  ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Vintage adds a warm film tone. Black & white keeps it classic.',
+                  style: TextStyle(color: Color(0xFF686375), fontSize: 13),
+                ),
+              ],
             ),
           ),
         ],
+      ),
+    ),
+  );
+}
+
+class _PhotoLookOption extends StatelessWidget {
+  const _PhotoLookOption({
+    required this.look,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final PhotoLook look;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: selected ? const Color(0xFFF0EAFE) : Colors.white,
+    child: InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: selected ? purple : const Color(0xFFE7E1F2),
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                look.label,
+                style: const TextStyle(color: ink, fontWeight: FontWeight.w800),
+              ),
+            ),
+            if (selected) const Icon(Icons.check_rounded, color: purple),
+          ],
+        ),
       ),
     ),
   );
@@ -410,6 +481,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   CameraDescription? _camera;
   final List<File> _captured = [];
   final List<bool> _capturedMirrored = [];
+  DateTime? _capturedAt;
   bool _flashEnabled = false;
   bool _busy = false;
   bool _finished = false;
@@ -493,6 +565,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       if (!mounted) return;
       setState(() => _countdown = null);
       final photo = await _controller!.takePicture();
+      _capturedAt ??= DateTime.now();
       _captured.add(File(photo.path));
       _capturedMirrored.add(widget.settings.mirrorCamera);
       if (_captured.length == widget.layout.photoCount) await _review();
@@ -519,6 +592,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
           layout: widget.layout,
           photos: _captured,
           mirrorPhotos: _capturedMirrored,
+          capturedAt: _capturedAt ?? DateTime.now(),
+          look: widget.settings.photoLook,
         ),
       ),
     );
@@ -532,6 +607,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       setState(() {
         _captured.clear();
         _capturedMirrored.clear();
+        _capturedAt = null;
       });
     }
   }
@@ -543,10 +619,13 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         layout: widget.layout,
         photos: _captured,
         mirrorPhotos: _capturedMirrored,
+        capturedAt: _capturedAt ?? DateTime.now(),
+        look: widget.settings.photoLook,
       );
+      final capturedAt = _capturedAt ?? DateTime.now();
       final session = PhotoSession(
         id: DateTime.now().microsecondsSinceEpoch.toString(),
-        createdAt: DateTime.now(),
+        createdAt: capturedAt,
         layoutId: widget.layout.id,
         timerSeconds: widget.timerSeconds,
         outputPath: output.path,
@@ -568,6 +647,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       }
       _captured.clear();
       _capturedMirrored.clear();
+      _capturedAt = null;
       _showMessage('We could not create your photo: $error');
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -781,14 +861,14 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
         child: CircularProgressIndicator(color: Colors.white),
       );
     }
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(28),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          AnimatedBuilder(
-            animation: widget.settings,
-            builder: (_, child) => Transform(
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        AnimatedBuilder(
+          animation: widget.settings,
+          builder: (_, child) => ColorFiltered(
+            colorFilter: photoLookColorFilter(widget.settings.photoLook),
+            child: Transform(
               alignment: Alignment.center,
               transform: Matrix4.diagonal3Values(
                 widget.settings.mirrorCamera ? -1 : 1,
@@ -797,34 +877,34 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
               ),
               child: child,
             ),
-            child: CameraPreview(controller),
           ),
-          if (_countdown != null)
-            Center(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 180),
-                child: Text(
-                  '${_countdown!}',
-                  key: ValueKey(_countdown),
-                  style: const TextStyle(
-                    fontSize: 118,
-                    height: 1,
-                    color: Colors.white,
-                    fontWeight: FontWeight.w900,
-                    shadows: [Shadow(color: Colors.black54, blurRadius: 12)],
-                  ),
+          child: CameraPreview(controller),
+        ),
+        if (_countdown != null)
+          Center(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
+              child: Text(
+                '${_countdown!}',
+                key: ValueKey(_countdown),
+                style: const TextStyle(
+                  fontSize: 118,
+                  height: 1,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  shadows: [Shadow(color: Colors.black54, blurRadius: 12)],
                 ),
               ),
             ),
-          if (_busy && _countdown == null)
-            const ColoredBox(
-              color: Color(0x44000000),
-              child: Center(
-                child: CircularProgressIndicator(color: Colors.white),
-              ),
+          ),
+        if (_busy && _countdown == null)
+          const ColoredBox(
+            color: Color(0x44000000),
+            child: Center(
+              child: CircularProgressIndicator(color: Colors.white),
             ),
-        ],
-      ),
+          ),
+      ],
     );
   }
 }
@@ -835,10 +915,14 @@ class ReviewScreen extends StatelessWidget {
     required this.layout,
     required this.photos,
     required this.mirrorPhotos,
+    required this.capturedAt,
+    required this.look,
   });
   final PhotoBoothLayout layout;
   final List<File> photos;
   final List<bool> mirrorPhotos;
+  final DateTime capturedAt;
+  final PhotoLook look;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -858,6 +942,8 @@ class ReviewScreen extends StatelessWidget {
               layout: layout,
               photos: photos,
               mirrorPhotos: mirrorPhotos,
+              capturedAt: capturedAt,
+              look: look,
               large: true,
             ),
           ),
@@ -1213,13 +1299,11 @@ class LayoutCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => InkWell(
     onTap: onTap,
-    borderRadius: BorderRadius.circular(16),
     child: AnimatedContainer(
       duration: const Duration(milliseconds: 160),
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: selected ? purple : const Color(0xFFE7E1F2),
           width: selected ? 2 : 1,
@@ -1272,27 +1356,41 @@ class LayoutPreview extends StatelessWidget {
     child: Container(
       decoration: BoxDecoration(
         color: Color(layout.colorValue),
-        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: Colors.white, width: 2),
       ),
       child: LayoutBuilder(
-        builder: (_, constraints) => Stack(
-          children: [
-            for (final slot in layout.slots)
+        builder: (_, constraints) {
+          final contentHeight = constraints.maxHeight * .88;
+          return Stack(
+            children: [
+              for (final slot in layout.slots)
+                Positioned(
+                  left: slot.x * constraints.maxWidth,
+                  top: slot.y * contentHeight,
+                  width: slot.width * constraints.maxWidth,
+                  height: slot.height * contentHeight,
+                  child: const ColoredBox(color: Color(0xFFB4A7A0)),
+                ),
               Positioned(
-                left: slot.x * constraints.maxWidth,
-                top: slot.y * constraints.maxHeight,
-                width: slot.width * constraints.maxWidth,
-                height: slot.height * constraints.maxHeight,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF7C2BE8),
-                    borderRadius: BorderRadius.circular(3),
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: constraints.maxHeight * .12,
+                child: Center(
+                  child: Text(
+                    _formatCaptureDate(DateTime.now()),
+                    style: const TextStyle(
+                      color: Color(0xFF514739),
+                      fontSize: 5,
+                      letterSpacing: .5,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
               ),
-          ],
-        ),
+            ],
+          );
+        },
       ),
     ),
   );
@@ -1304,25 +1402,27 @@ class PhotoFrame extends StatelessWidget {
     required this.layout,
     required this.photos,
     this.mirrorPhotos = const [],
+    this.capturedAt,
+    this.look = PhotoLook.original,
     this.finalPhoto = false,
     this.large = false,
   });
   final PhotoBoothLayout layout;
   final List<File> photos;
   final List<bool> mirrorPhotos;
+  final DateTime? capturedAt;
+  final PhotoLook look;
   final bool finalPhoto;
   final bool large;
   @override
   Widget build(BuildContext context) => SizedBox(
     width: large ? (layout.isStrip ? 210 : 330) : null,
     child: AspectRatio(
-      aspectRatio: layout.aspectRatio,
+      aspectRatio: layout.framedAspectRatio,
       child: Container(
-        padding: EdgeInsets.all(large ? 5 : 3),
         decoration: BoxDecoration(
-          color: Color(layout.colorValue),
-          borderRadius: BorderRadius.circular(large ? 18 : 8),
-          border: Border.all(color: Colors.white, width: large ? 4 : 2),
+          color: _backgroundColor,
+          border: Border.all(color: _borderColor, width: large ? 2 : 1),
           boxShadow: large
               ? const [
                   BoxShadow(
@@ -1334,31 +1434,69 @@ class PhotoFrame extends StatelessWidget {
               : null,
         ),
         child: finalPhoto
-            ? ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.file(photos.first, fit: BoxFit.cover),
-              )
+            ? Image.file(photos.first, fit: BoxFit.cover)
             : LayoutBuilder(
-                builder: (_, constraints) => Stack(
-                  children: [
-                    for (var index = 0; index < layout.slots.length; index++)
-                      _slot(index, constraints),
-                  ],
-                ),
+                builder: (_, constraints) => _buildFrame(constraints),
               ),
       ),
     ),
   );
 
-  Widget _slot(int index, BoxConstraints constraints) {
+  Color get _backgroundColor => switch (look) {
+    PhotoLook.original => Color(layout.colorValue),
+    PhotoLook.vintage => const Color(0xFFE9DCC4),
+    PhotoLook.blackAndWhite => const Color(0xFFF4F2EC),
+  };
+
+  Color get _borderColor => switch (look) {
+    PhotoLook.original => const Color(0xFFFFFFFF),
+    PhotoLook.vintage => const Color(0xFF9A7950),
+    PhotoLook.blackAndWhite => const Color(0xFF292929),
+  };
+
+  Widget _buildFrame(BoxConstraints constraints) {
+    final contentHeight = constraints.maxHeight * .88;
+    final captureDate = capturedAt ?? DateTime.now();
+    return Stack(
+      children: [
+        for (var index = 0; index < layout.slots.length; index++)
+          _slot(index, constraints.maxWidth, contentHeight),
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: constraints.maxHeight * .12,
+          child: ColoredBox(
+            color: _backgroundColor,
+            child: Center(
+              child: Text(
+                _formatCaptureDate(captureDate),
+                style: TextStyle(
+                  color: look == PhotoLook.blackAndWhite
+                      ? const Color(0xFF292929)
+                      : const Color(0xFF514739),
+                  fontSize: large ? 10 : 8,
+                  letterSpacing: 1.4,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _slot(int index, double frameWidth, double contentHeight) {
     final slot = layout.slots[index];
+    final image = Image.file(photos[index], fit: BoxFit.cover);
     return Positioned(
-      left: slot.x * constraints.maxWidth,
-      top: slot.y * constraints.maxHeight,
-      width: slot.width * constraints.maxWidth,
-      height: slot.height * constraints.maxHeight,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(large ? 7 : 3),
+      left: slot.x * frameWidth,
+      top: slot.y * contentHeight,
+      width: slot.width * frameWidth,
+      height: slot.height * contentHeight,
+      child: ColorFiltered(
+        colorFilter: photoLookColorFilter(look),
         child: Transform(
           alignment: Alignment.center,
           transform: Matrix4.diagonal3Values(
@@ -1366,12 +1504,82 @@ class PhotoFrame extends StatelessWidget {
             1,
             1,
           ),
-          child: Image.file(photos[index], fit: BoxFit.cover),
+          child: image,
         ),
       ),
     );
   }
 }
+
+String _formatCaptureDate(DateTime date) {
+  const months = [
+    'JAN',
+    'FEB',
+    'MAR',
+    'APR',
+    'MAY',
+    'JUN',
+    'JUL',
+    'AUG',
+    'SEP',
+    'OCT',
+    'NOV',
+    'DEC',
+  ];
+  final local = date.toLocal();
+  return '${local.day.toString().padLeft(2, '0')} ${months[local.month - 1]} ${local.year}';
+}
+
+ColorFilter photoLookColorFilter(PhotoLook look) => switch (look) {
+  PhotoLook.original => const ColorFilter.mode(
+    Colors.transparent,
+    BlendMode.dst,
+  ),
+  PhotoLook.vintage => const ColorFilter.matrix([
+    .393,
+    .769,
+    .189,
+    0,
+    0,
+    .349,
+    .686,
+    .168,
+    0,
+    0,
+    .272,
+    .534,
+    .131,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+  ]),
+  PhotoLook.blackAndWhite => const ColorFilter.matrix([
+    .2126,
+    .7152,
+    .0722,
+    0,
+    0,
+    .2126,
+    .7152,
+    .0722,
+    0,
+    0,
+    .2126,
+    .7152,
+    .0722,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+  ]),
+};
 
 class EmptyRecent extends StatelessWidget {
   const EmptyRecent({super.key});
@@ -1404,14 +1612,11 @@ class RecentGrid extends StatelessWidget {
             padding: EdgeInsets.only(
               right: index == sessions.length - 1 ? 0 : 12,
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: AspectRatio(
-                aspectRatio: .72,
-                child: Image.file(
-                  File(sessions[index].outputPath),
-                  fit: BoxFit.cover,
-                ),
+            child: AspectRatio(
+              aspectRatio: .72,
+              child: Image.file(
+                File(sessions[index].outputPath),
+                fit: BoxFit.cover,
               ),
             ),
           ),
@@ -1434,14 +1639,10 @@ class GalleryTile extends StatelessWidget {
     child: Stack(
       fit: StackFit.expand,
       children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(18),
-          child: Image.file(
-            File(session.outputPath),
-            fit: BoxFit.cover,
-            errorBuilder: (_, _, _) =>
-                const ColoredBox(color: Color(0xFFE8E1F4)),
-          ),
+        Image.file(
+          File(session.outputPath),
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => const ColoredBox(color: Color(0xFFE8E1F4)),
         ),
         Positioned(
           right: 4,
